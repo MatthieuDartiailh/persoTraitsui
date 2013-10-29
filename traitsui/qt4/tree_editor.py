@@ -162,10 +162,14 @@ class SimpleEditor ( Editor ):
             else:
                 # If editable, create a tree control and an editor panel:
                 self._tree = _TreeWidget(self)
+                self._tree.setSizePolicy(QtGui.QSizePolicy.Minimum,
+                                       QtGui.QSizePolicy.Expanding)
 
                 self._editor = sa = QtGui.QScrollArea()
                 sa.setFrameShape(QtGui.QFrame.NoFrame)
                 sa.setWidgetResizable(True)
+                sa.setSizePolicy(QtGui.QSizePolicy.Expanding,
+                                       QtGui.QSizePolicy.Expanding)
                 sa._node_ui = sa._editor_nid = None
 
                 if factory.orientation == 'horizontal':
@@ -178,6 +182,8 @@ class SimpleEditor ( Editor ):
                                        QtGui.QSizePolicy.Expanding)
                 splitter.addWidget(self._tree)
                 splitter.addWidget(sa)
+                splitter.setStretchFactor(0,0)
+                splitter.setStretchFactor(1,1)
         else:
             # Otherwise, just create the tree control:
             self.control = self._tree = _TreeWidget(self)
@@ -353,6 +359,10 @@ class SimpleEditor ( Editor ):
                 nid.setText(i, label)
 
     #---------------------------------------------------------------------------
+        color = node.get_background(object)
+        if color : nid.setBackground(0, self._get_brush(color))
+        color = node.get_foreground(object)
+        if color : nid.setForeground(0, self._get_brush(color))
     #  Private Delegate class to do drawing in case of wrapped text labels
     #---------------------------------------------------------------------------
 
@@ -381,6 +391,7 @@ class SimpleEditor ( Editor ):
             item = self.editor._tree.itemFromIndex(index)
             expanded, node, object = self.editor._get_node_data(item)
             text = node.get_label(object)
+            textrect = option.rect
             if self.editor.factory.show_icons:
                 iconwidth = 24 # FIXME: get width from actual
             else:
@@ -418,13 +429,6 @@ class SimpleEditor ( Editor ):
             cnid.setText(0, node.get_label(object))
         cnid.setIcon(0, self._get_icon(node, object))
         cnid.setToolTip(0, node.get_tooltip(object))
-        self._set_column_labels(cnid, node.get_column_labels(object))
-
-        color = node.get_background(object)
-        if color : cnid.setBackground(0, self._get_brush(color))
-        color = node.get_foreground(object)
-        if color : cnid.setForeground(0, self._get_brush(color))
-
         return cnid
 
     def _set_label(self, nid, text, col=0):
@@ -560,18 +564,12 @@ class SimpleEditor ( Editor ):
     def _node_index ( self, nid ):
         pnid = nid.parent()
         if pnid is None:
-            if self.factory.hide_root:
-                pnid = self._tree.invisibleRootItem()
-            if pnid is None:
-                return ( None, None, None )
+            return ( None, None, None )
 
         for i in range(pnid.childCount()):
             if pnid.child(i) is nid:
                 _, pnode, pobject = self._get_node_data( pnid )
                 return ( pnode, pobject, i )
-        else:
-            # doesn't match any node, so return None
-            return ( None, None, None )
 
     #---------------------------------------------------------------------------
     #  Returns whether a specified object has any children:
@@ -1558,7 +1556,7 @@ class SimpleEditor ( Editor ):
                 for cnid in self._nodes_for( nid )[ start: end ]:
                     self._delete_node( cnid )
 
-                remaining = len( children ) - len( event.removed )
+                remaining = n - len( event.removed )
                 child_index = 0
                 # Add all of the children that were added:
                 for child in event.added:
@@ -1630,7 +1628,7 @@ class SimpleEditor ( Editor ):
 
             self.control.restoreState(structure)
         header = self._tree.header()
-        self.setExpandsOnDoubleClick(self.factory.expands_on_dclick)
+        self.setExpandsOnDoubleClick(editor.factory.expands_on_dclick)
 
         if header is not None and 'column_state' in prefs:
             header.restoreState(prefs['column_state'])
@@ -1727,7 +1725,7 @@ class _TreeWidget(QtGui.QTreeWidget):
         # Convert the item being dragged to MIME data.
         drag_object = node.get_drag_object(object)
         md = PyMimeData.coerce(drag_object)
-
+        
         # Render the item being dragged as a pixmap.
         nid_rect = self.visualItemRect(nid)
         rect = nid_rect.intersected(self.viewport().rect())
@@ -1744,7 +1742,8 @@ class _TreeWidget(QtGui.QTreeWidget):
 
         # Calculate the hotspot so that the pixmap appears on top of the
         # original item.
-        hspos = self.viewport().mapFromGlobal(QtGui.QCursor.pos()) - nid_rect.topLeft()
+        rect.adjust(self.horizontalOffset(), self.verticalOffset(), 0, 0)
+        hspos = self.mapFromGlobal(QtGui.QCursor.pos()) - nid_rect.topLeft()
 
         # Start the drag.
         drag = QtGui.QDrag(self)
@@ -1760,9 +1759,9 @@ class _TreeWidget(QtGui.QTreeWidget):
         # Assume the drag is invalid.
         e.ignore()
 
-        # Check if we have a python object instance, we might be interested
-        data = PyMimeData.coerce(e.mimeData()).instance()
-        if data is None:
+        # Check what is being dragged.
+        md = PyMimeData.coerce(e.mimeData())
+        if md is None:
             return
 
         # We might be able to handle it (but it depends on what the final
@@ -1776,10 +1775,39 @@ class _TreeWidget(QtGui.QTreeWidget):
         # Assume the drag is invalid.
         e.ignore()
 
-        action, to_node, to_object, to_index, data = self._get_action( e )
+        # Get the tree widget item under the cursor.
+        nid = self.itemAt(e.pos())
+        if nid is None:
+            return
 
-        if action is not None:
-            e.acceptProposedAction()
+        # Check that the target is not the source of a child of the source.
+        if self._dragging is not None:
+            pnid = nid
+            while pnid is not None:
+                if pnid is self._dragging:
+                    return
+
+                pnid = pnid.parent()
+
+        # A copy action is interpreted as moving the source to a particular
+        # place within the target's parent.  A move action is interpreted as
+        # moving the source to be a child of the target.
+        node = None
+        if e.proposedAction() == QtCore.Qt.CopyAction:
+            node, object, _ = self._editor._node_index(nid)
+            # `node` is None in case of top-level tree node, in which case we try move
+            insert = True
+        if node is None:
+            _, node, object = self._editor._get_node_data(nid)
+            insert = False
+
+        # See if the model will accept a drop.
+        data = PyMimeData.coerce(e.mimeData()).instance()
+
+        if not self._editor._is_droppable(node, object, data, insert):
+            return
+
+        e.acceptProposedAction()
 
     def dropEvent(self, e):
         """ Reimplemented to update the model and tree.
@@ -1787,108 +1815,61 @@ class _TreeWidget(QtGui.QTreeWidget):
         # Assume the drop is invalid.
         e.ignore()
 
-        editor = self._editor
-
         dragging = self._dragging
         self._dragging = None
 
-        action, to_node, to_object, to_index, data = self._get_action( e )
+        # Get the tree widget item under the cursor.
+        nid = self.itemAt(e.pos())
+        if nid is None:
+            return
 
-        if action == 'append':
+        # Get the data being dropped.
+        data = PyMimeData.coerce(e.mimeData()).instance()
+
+        editor = self._editor
+        _, node, object = editor._get_node_data(nid)
+
+        if e.proposedAction() == QtCore.Qt.MoveAction:
+            if not self._editor._is_droppable(node, object, data, False ):
+                return
+
             if dragging is not None:
-                data = self._editor._drop_object( to_node, to_object, data, False )
+                data = self._editor._drop_object( node, object, data, False )
                 if data is not None:
                     try:
                         editor._begin_undo()
                         editor._undoable_delete(
                                  *editor._node_index( dragging ) )
-                        editor._undoable_append( to_node, object, data, False )
+                        editor._undoable_append( node, object, data, False )
                     finally:
                         editor._end_undo()
             else:
-                data = editor._drop_object( to_node, to_object, data, True )
+                data = self._editor._drop_object( node, object, data, True )
                 if data is not None:
-                    editor._undoable_append( to_node, to_object, data, False )
-        elif action == 'insert':
-            if dragging is not None:
-                data = editor._drop_object( to_node, to_object, data, False )
-                if data is not None:
-                    from_node, from_object, from_index = \
-                            editor._node_index( dragging )
-                    if ((to_object is from_object) and
-                        (to_index > from_index)):
-                        to_index -= 1
-                    try:
-                        editor._begin_undo()
-                        editor._undoable_delete( from_node, from_object,
-                                                from_index )
-                        editor._undoable_insert( to_node, to_object, to_index,
-                                                data, False )
-                    finally:
-                        editor._end_undo()
-            else:
-                data = self._editor._drop_object( to_node, to_object, data, True )
-                if data is not None:
-                    editor._undoable_insert( to_node, to_object, to_index,
-                                            data, False )
+                    editor._undoable_append( node, object, data, False )
         else:
-            return
+            to_node, to_object, to_index = editor._node_index( nid )
+            if to_node is not None:
+                if dragging is not None:
+                    data = self._editor._drop_object( node, to_object, data, False )
+                    if data is not None:
+                        from_node, from_object, from_index = \
+                            editor._node_index( dragging )
+                        if ((to_object is from_object) and
+                            (to_index > from_index)):
+                            to_index -= 1
+                        try:
+                            editor._begin_undo()
+                            editor._undoable_delete( from_node, from_object,
+                                                   from_index )
+                            editor._undoable_insert( to_node, to_object, to_index,
+                                                   data, False )
+                        finally:
+                            editor._end_undo()
+                else:
+                    data = self._editor._drop_object( to_node, to_object, data, True )
+                    if data is not None:
+                        editor._undoable_insert( to_node, to_object, to_index,
+                                               data, False )
 
         e.acceptProposedAction()
-
-    def _get_action(self, event):
-        """ Work out what action on what object to perform for a drop event
-        """
-        # default values to return
-        action = None
-        to_node = None
-        to_object = None
-        to_index = None
-        data = None
-
-        editor = self._editor
-
-        # Get the tree widget item under the cursor.
-        nid = self.itemAt(event.pos())
-        if nid is None:
-            if editor.factory.hide_root:
-                nid = self.invisibleRootItem()
-            else:
-                return (action, to_node, to_object, to_index, data)
-
-        # Check that the target is not the source of a child of the source.
-        if self._dragging is not None:
-            pnid = nid
-            while pnid is not None:
-                if pnid is self._dragging:
-                    return (action, to_node, to_object, to_index, data)
-
-                pnid = pnid.parent()
-
-        data = PyMimeData.coerce(event.mimeData()).instance()
-        _, node, object = editor._get_node_data(nid)
-
-        if event.proposedAction() == QtCore.Qt.MoveAction and \
-                editor._is_droppable(node, object, data, False):
-            # append to node being dropped on
-            action = 'append'
-            to_node = node
-            to_object = object
-            to_index = None
-        else:
-            # get parent of node being dropped on
-            to_node, to_object, to_index = editor._node_index(nid)
-            if to_node is None:
-                # no parent, can't do anything
-                action = None
-            elif editor._is_droppable(to_node, to_object, data, True):
-                # insert into the parent of the node being dropped on
-                action = 'insert'
-            elif editor._is_droppable(to_node, to_object, data, False):
-                # append to the parent of the node being dropped on
-                action = 'append'
-            else:
-                # parent can't be modified, can't do anything
-                action = None
-
-        return (action, to_node, to_object, to_index, data)

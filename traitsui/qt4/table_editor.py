@@ -18,8 +18,6 @@
 
 from pyface.qt import QtCore, QtGui
 
-from pyface.image_resource import ImageResource
-
 from pyface.timer.api import do_later
 
 from traits.api import Any, Bool, Button, Event, List, HasTraits, \
@@ -30,7 +28,7 @@ from traitsui.api import EnumEditor, InstanceEditor, Group, \
     spring
 from traitsui.editors.table_editor import BaseTableEditor, \
     ReversedList, ToolkitEditorFactory, customize_filter
-from traitsui.ui_traits import SequenceTypes, Image
+from traitsui.ui_traits import SequenceTypes
 
 from editor import Editor
 from table_model import TableModel, SortFilterTableModel
@@ -111,15 +109,6 @@ class TableEditor(Editor, BaseTableEditor):
 
     # Whether to auto-size the columns or not.
     auto_size = Bool(False)
-
-    # Dictionary mapping image names to QIcons
-    images = Any({})
-
-    # Dictionary mapping ImageResource objects to QIcons
-    image_resources = Any({})
-
-    # An image being converted:
-    image = Image
 
     #---------------------------------------------------------------------------
     #  Finishes initializing the editor by creating the underlying toolkit
@@ -525,31 +514,6 @@ class TableEditor(Editor, BaseTableEditor):
             self.filtered_indices = fi = [ i for i, ok in enumerate(fc) if ok ]
             self.filter_summary = '%i of %i items' % (len(fi), num_items)
 
-    def _add_image(self, image_resource):
-        """ Adds a new image to the image map.
-        """
-        image = image_resource.create_icon()
-
-        self.image_resources[image_resource] = image
-        self.images[image_resource.name] = image
-
-        return image
-
-    def _get_image(self, image):
-        """ Converts a user specified image to a QIcon.
-        """
-        if isinstance(image, basestring):
-            self.image = image
-            image = self.image
-
-        if isinstance(image, ImageResource):
-            result = self.image_resources.get(image)
-            if result is not None:
-                return result
-            return self._add_image(image)
-
-        return self.images.get(image)
-
     #-- Trait Property getters/setters -----------------------------------------
 
     @cached_property
@@ -862,7 +826,6 @@ class TableView(QtGui.QTableView):
         if ((factory.editable and (insertable or factory.deletable)) or
              factory.reorderable):
             vheader.installEventFilter(self)
-            vheader.setResizeMode(QtGui.QHeaderView.ResizeToContents)
         else:
             vheader.hide()
         self.setAlternatingRowColors(factory.alternate_bg_color)
@@ -911,13 +874,11 @@ class TableView(QtGui.QTableView):
         self.setEditTriggers(triggers)
 
         # Configure the reordering and sorting behavior.
-        self.setDragEnabled(True)
-        self.viewport().setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-
         if factory.reorderable:
+            self.setDragEnabled(True)
             self.setDragDropMode(QtGui.QAbstractItemView.InternalMove)
-        if factory.sortable:
+            self.setDropIndicatorShown(True)
+        elif factory.sortable:
             self.setSortingEnabled(True)
 
         if factory._qt_stylesheet is not None:

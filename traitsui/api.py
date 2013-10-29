@@ -41,7 +41,7 @@ from .editors.api import (ArrayEditor, BooleanEditor, ButtonEditor,
     ListStrEditor, NullEditor, PopupEditor, ProgressEditor, RGBColorEditor,
     RangeEditor, ScrubberEditor, SearchEditor, SetEditor, ShellEditor,
     TableEditor, TabularEditor, TextEditor, TimeEditor, TitleEditor, TreeEditor,
-    TupleEditor, ValueEditor)
+    TupleEditor, ValueEditor, ListInstanceEditor, LineCompleterEditor)
 
 from .group import (Group, HFlow, HGroup, HSplit, Tabbed, VFlow, VFold, VGrid,
     VGroup, VSplit)

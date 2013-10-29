@@ -163,7 +163,7 @@ class IconButton(QtGui.QPushButton):
         standard icon provided by the current style.
     """
 
-    def __init__(self, icon, slot):
+    def __init__(self, icon, slot, obj = None):
         """ Initialise the button.  icon is either the name of an image file or
             one of the QtGui.QStyle.SP_* values.
         """
@@ -198,7 +198,10 @@ class IconButton(QtGui.QPushButton):
         self.setFlat(True)
         self.setFocusPolicy(QtCore.Qt.NoFocus)
 
-        self.clicked.connect(slot)
+        if obj is not None:
+            QtCore.QObject.connect(self, QtCore.SIGNAL('clicked()'), obj, slot)
+        else:
+            QtCore.QObject.connect(self, QtCore.SIGNAL('clicked()'), slot)
 
 #-------------------------------------------------------------------------------
 #  Dock-related stubs.

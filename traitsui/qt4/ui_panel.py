@@ -245,10 +245,13 @@ def panel(ui):
             w.setLayout(panel)
             panel = w
 
+        size_policy =  panel.sizePolicy()
         sa = QtGui.QScrollArea()
         sa.setWidget(panel)
         sa.setWidgetResizable(True)
+        sa.setSizePolicy(size_policy)
         panel = sa
+
 
     return panel
 
@@ -309,10 +312,11 @@ def _size_hint_wrapper(f, ui):
     """
     def sizeHint():
         size = f()
-        if ui.view.width > 0:
-            size.setWidth(ui.view.width)
-        if ui.view.height > 0:
-            size.setHeight(ui.view.height)
+        if ui.view is not None:
+            if ui.view.width > 0:
+                size.setWidth(ui.view.width)
+            if ui.view.height > 0:
+                size.setHeight(ui.view.height)
         return size
     return sizeHint
 

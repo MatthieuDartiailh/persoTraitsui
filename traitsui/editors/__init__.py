@@ -27,5 +27,6 @@ from .api import (toolkit, ArrayEditor, BooleanEditor, ButtonEditor,
     RangeEditor, RGBColorEditor, SetEditor, TextEditor, TableEditor,
     TimeEditor, TitleEditor, TreeEditor, TupleEditor, HistoryEditor,
     HTMLEditor, PopupEditor, ValueEditor, ShellEditor, ScrubberEditor,
-    TabularEditor, ProgressEditor, SearchEditor)
+    TabularEditor, ProgressEditor, SearchEditor, ListInstanceEditor,
+    LineCompleterEditor)
 

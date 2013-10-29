@@ -46,3 +46,5 @@ from .scrubber_editor import ScrubberEditor
 from .tabular_editor import TabularEditor
 from .progress_editor import ProgressEditor
 from .search_editor import SearchEditor
+from .list_instances_editor import ListInstanceEditor
+from .line_completer_editor import LineCompleterEditor
